@@ -1,0 +1,183 @@
+
+blueprint:
+  name: Advanced Adaptive Thermostat Schedule
+  description: Set thermostat schedules with geofencing and weather-based adjustments for a single thermostat.
+  domain: automation
+  input:
+    thermostat:
+      name: Thermostat
+      description: Select the thermostat to control.
+      selector:
+        entity:
+          domain: climate
+    morning_time:
+      name: Morning Schedule Time
+      description: Time to set the morning temperature.
+      selector:
+        time: {}
+    morning_temp:
+      name: Morning Temperature
+      description: Target temperature for the morning.
+      selector:
+        number:
+          min: 50
+          max: 80
+          step: 1
+          unit_of_measurement: "°F"
+    afternoon_time:
+      name: Afternoon Schedule Time
+      description: Time to set the afternoon temperature.
+      selector:
+        time: {}
+    afternoon_temp:
+      name: Afternoon Temperature
+      description: Target temperature for the afternoon.
+      selector:
+        number:
+          min: 50
+          max: 80
+          step: 1
+          unit_of_measurement: "°F"
+    evening_time:
+      name: Evening Schedule Time
+      description: Time to set the evening temperature.
+      selector:
+        time: {}
+    evening_temp:
+      name: Evening Temperature
+      description: Target temperature for the evening.
+      selector:
+        number:
+          min: 50
+          max: 80
+          step: 1
+          unit_of_measurement: "°F"
+    night_time:
+      name: Night Schedule Time
+      description: Time to set the night temperature.
+      selector:
+        time: {}
+    night_temp:
+      name: Night Temperature
+      description: Target temperature for the night.
+      selector:
+        number:
+          min: 50
+          max: 80
+          step: 1
+          unit_of_measurement: "°F"
+    adjust_for_weather:
+      name: Adjust for Weather
+      description: Enable weather-based temperature adjustment.
+      selector:
+        boolean: {}
+    weather_sensor:
+      name: Weather Sensor
+      description: Select the outdoor temperature sensor (optional).
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    use_geofencing:
+      name: Use Geofencing
+      description: Enable geofencing for home/away modes.
+      selector:
+        boolean: {}
+    person:
+      name: Person
+      description: Select the person entity for geofencing.
+      selector:
+        entity:
+          domain: person
+
+trigger:
+  - platform: time
+    at: !input morning_time
+  - platform: time
+    at: !input afternoon_time
+  - platform: time
+    at: !input evening_time
+  - platform: time
+    at: !input night_time
+  - platform: state
+    entity_id: !input person
+    to: "not_home"
+  - platform: state
+    entity_id: !input person
+    to: "home"
+
+action:
+  - choose:
+      # Geofencing: Away Mode
+      - conditions:
+          - condition: state
+            entity_id: !input use_geofencing
+            state: "on"
+          - condition: state
+            entity_id: !input person
+            state: "not_home"
+        sequence:
+          - service: climate.set_temperature
+            data:
+              entity_id: !input thermostat
+              temperature: 62
+      # Geofencing: Home Mode
+      - conditions:
+          - condition: state
+            entity_id: !input use_geofencing
+            state: "on"
+          - condition: state
+            entity_id: !input person
+            state: "home"
+        sequence:
+          - service: climate.set_temperature
+            data:
+              entity_id: !input thermostat
+              temperature: >
+                {% if trigger.now.strftime('%H:%M') == states('!input morning_time') %}
+                  {{ !input morning_temp }}
+                {% elif trigger.now.strftime('%H:%M') == states('!input afternoon_time') %}
+                  {{ !input afternoon_temp }}
+                {% elif trigger.now.strftime('%H:%M') == states('!input evening_time') %}
+                  {{ !input evening_temp }}
+                {% elif trigger.now.strftime('%H:%M') == states('!input night_time') %}
+                  {{ !input night_temp }}
+                {% endif %}
+      # Weather Adjustments
+      - conditions:
+          - condition: state
+            entity_id: !input adjust_for_weather
+            state: "on"
+          - condition: numeric_state
+            entity_id: !input weather_sensor
+            below: 32
+        sequence:
+          - service: climate.set_temperature
+            data:
+              entity_id: !input thermostat
+              temperature: >
+                {% if trigger.now.strftime('%H:%M') == states('!input morning_time') %}
+                  {{ !input morning_temp + 2 }}
+                {% elif trigger.now.strftime('%H:%M') == states('!input afternoon_time') %}
+                  {{ !input afternoon_temp + 2 }}
+                {% elif trigger.now.strftime('%H:%M') == states('!input evening_time') %}
+                  {{ !input evening_temp + 2 }}
+                {% elif trigger.now.strftime('%H:%M') == states('!input night_time') %}
+                  {{ !input night_temp + 2 }}
+                {% endif %}
+    default:
+      # Default Temperature Schedule
+      - service: climate.set_temperature
+        data:
+          entity_id: !input thermostat
+          temperature: >
+            {% if trigger.now.strftime('%H:%M') == states('!input morning_time') %}
+              {{ !input morning_temp }}
+            {% elif trigger.now.strftime('%H:%M') == states('!input afternoon_time') %}
+              {{ !input afternoon_temp }}
+            {% elif trigger.now.strftime('%H:%M') == states('!input evening_time') %}
+              {{ !input evening_temp }}
+            {% elif trigger.now.strftime('%H:%M') == states('!input night_time') %}
+              {{ !input night_temp }}
+            {% endif %}
+mode: single
